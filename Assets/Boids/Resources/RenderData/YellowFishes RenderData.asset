@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 552b5d6359dea624b9b49b1e86ff2ced, type: 3}
+  m_Name: YellowFishes RenderData
+  m_EditorClassIdentifier: 
+  layer:
+    serializedVersion: 2
+    m_Bits: 1
+  shadowCastingMode: 0
+  lightProbeUsage: 0
+  useAdditonalData: 0
+  lods:
+  - screenRelativeTransitionHeight: 0.1
+    mesh: {fileID: 3100125623416975690, guid: 0c27efdc8680d994fa2ef63f380ace15, type: 3}
+    materials:
+    - {fileID: 2100000, guid: 9997b1eae8b110f40a7484b80ccf6b0a, type: 2}
+  - screenRelativeTransitionHeight: 0.05
+    mesh: {fileID: -3424319808895311755, guid: 0c27efdc8680d994fa2ef63f380ace15, type: 3}
+    materials:
+    - {fileID: 2100000, guid: 9997b1eae8b110f40a7484b80ccf6b0a, type: 2}
+  - screenRelativeTransitionHeight: 0
+    mesh: {fileID: 6281137517435743322, guid: 0c27efdc8680d994fa2ef63f380ace15, type: 3}
+    materials:
+    - {fileID: 2100000, guid: 9997b1eae8b110f40a7484b80ccf6b0a, type: 2}
+  isDistanceCulling: 0
+  minDistance: 0
+  maxDistance: 500
+  isFrustumCulling: 1
+  isOcclusionCulling: 0

@@ -1,0 +1,156 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+uint _Count;
+float3 _BoundMin;
+float3 _BoundMax;
+float4 _CameraParameters;//position:x,y,z halfAngle:w
+float4 _FrustumPlanes[6];
+StructuredBuffer<float4x4> _LocalToWorldMatrices;
+RWStructuredBuffer<uint> _LodVisibility;
+
+// LOD
+float4x4 _LodSizes;
+uint _LodCount;
+
+//
+bool _IsDistanceCulling;
+float _MinDistance;
+float _MaxDistance;
+
+bool _IsFrustumCulling;
+bool _IsOcclusionCulling;
+
+#define Deg2Rad (3.1415926535897931f * 2.0f / 360.0f)
+
+bool GetSide(float4 plane, float3 pointPosition)
+{
+    return dot(plane.xyz, pointPosition) + plane.w > 0;
+}
+
+inline void CalculateDistanceAndRelativeHeight(float4x4 instanceMatrix, float3 boundsExtents, out float dist, out float relativeHeight)
+{
+    float halfAngle = _CameraParameters.w;// tan(Deg2Rad * fov * 0.5f);
+    float3 scale = float3(length(instanceMatrix._11_12_13), length(instanceMatrix._21_22_23), length(instanceMatrix._31_32_33));
+    dist = abs(distance(instanceMatrix._14_24_34, _CameraParameters.xyz));
+    relativeHeight = max(max(boundsExtents.x * scale.x, boundsExtents.y * scale.y), boundsExtents.z * scale.z) / (dist * halfAngle);
+}
+
+//inline void CalculateBoundingBox(in float4x4 objectTransformMatrix, inout float4 BoundingBox[8])
+//{
+//    // Calculate clip space matrix
+//    float4x4 to_clip_space_mat = mul(mvpMatrix, objectTransformMatrix);
+//
+//    float3 Min = boundsCenter - boundsExtents;
+//    float3 Max = boundsCenter + boundsExtents;
+//
+//    // Transform all 8 corner points of the object bounding box to clip space
+//    BoundingBox[0] = mul(to_clip_space_mat, float4(Min.x, Max.y, Min.z, 1.0));
+//    BoundingBox[1] = mul(to_clip_space_mat, float4(Min.x, Max.y, Max.z, 1.0));
+//    BoundingBox[2] = mul(to_clip_space_mat, float4(Max.x, Max.y, Max.z, 1.0));
+//    BoundingBox[3] = mul(to_clip_space_mat, float4(Max.x, Max.y, Min.z, 1.0));
+//    BoundingBox[4] = mul(to_clip_space_mat, float4(Max.x, Min.y, Min.z, 1.0));
+//    BoundingBox[5] = mul(to_clip_space_mat, float4(Max.x, Min.y, Max.z, 1.0));
+//    BoundingBox[6] = mul(to_clip_space_mat, float4(Min.x, Min.y, Max.z, 1.0));
+//    BoundingBox[7] = mul(to_clip_space_mat, float4(Min.x, Min.y, Min.z, 1.0));
+//}
+
+inline void CalculateBoundingBox(in float4x4 localToWorldMatrix, inout float4 boundingBox[8])
+{
+    // Transform all 8 corner points of the object bounding box to clip space
+    boundingBox[0] = mul(localToWorldMatrix, float4(_BoundMin, 1));
+    boundingBox[1] = mul(localToWorldMatrix, float4(_BoundMax, 1));
+    boundingBox[2] = mul(localToWorldMatrix, float4(_BoundMax.x, _BoundMax.y, _BoundMin.z, 1));
+    boundingBox[3] = mul(localToWorldMatrix, float4(_BoundMax.x, _BoundMin.y, _BoundMax.z, 1));
+    boundingBox[6] = mul(localToWorldMatrix, float4(_BoundMax.x, _BoundMin.y, _BoundMin.z, 1));
+    boundingBox[4] = mul(localToWorldMatrix, float4(_BoundMin.x, _BoundMax.y, _BoundMax.z, 1));
+    boundingBox[5] = mul(localToWorldMatrix, float4(_BoundMin.x, _BoundMax.y, _BoundMin.z, 1));
+    boundingBox[7] = mul(localToWorldMatrix, float4(_BoundMin.x, _BoundMin.y, _BoundMax.z, 1));
+}
+
+inline bool IsFrustumCulled(float4 boundingBox[8])
+{
+    bool isCulled = false;
+
+    for (int i = 0; i < 6; i++)
+    {
+        for (int j = 0; j < 8; j++)
+        {
+            float3 boundPosition = boundingBox[j].xyz;
+
+            if (GetSide(_FrustumPlanes[i], boundPosition))
+            {
+                break;
+            }
+            if (j == 7)
+                isCulled = true;
+        }
+    }
+    return isCulled;
+}
+
+inline void IsCulled(in float4x4 localToWorldMatrix, in float dist, out bool culled)
+{
+    culled = false;
+
+    // Distance culling
+    if (_IsDistanceCulling)
+    {
+        if (dist >= _MaxDistance || dist < _MinDistance)
+        {
+            culled = true;
+        }
+    }
+
+    if (!culled /*&& dist >= minCullingDistance*/)
+    {
+        float4 boundingBox[8];
+        CalculateBoundingBox(localToWorldMatrix, boundingBox);
+
+        // OBB Frustum Culling
+        if (_IsFrustumCulling)
+        {
+            culled = IsFrustumCulled(boundingBox);
+        }
+
+        // Hierarchical Z-Buffer Occlusion Culling
+        //if (!culled && _IsOcclusionCulling)
+        //{
+        //    culled = IsOcclusionCulled(BoundingBox);
+        //}
+    }
+}
+
+inline void CalculateLODNo(float size/*, float distance*/, bool isCulled, out uint lodNo/*, out uint shadowLodNo*/)
+{
+    lodNo = 9;
+    for (uint i = 0; i < _LodCount; i++)
+    {
+        if (size > _LodSizes[i % 4][i / 4])
+        {
+            if (!isCulled)
+                lodNo = i;
+            break;
+        }
+    }
+}
+
+[numthreads(64, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _Count)
+        return;
+
+    float dist = 0;
+    float size = 0;
+    float4x4 localToWorldMatrix = _LocalToWorldMatrices[id.x];
+    CalculateDistanceAndRelativeHeight(localToWorldMatrix, _BoundMax - _BoundMin, dist, size);
+
+    bool culled = false;
+    IsCulled(localToWorldMatrix, dist, culled);
+
+    uint lodNo = 9;
+    CalculateLODNo(size, culled, lodNo);
+
+    _LodVisibility[id.x] = lodNo;
+}

@@ -1,0 +1,52 @@
+#pragma kernel CSInstancedLODSortKernel0
+#pragma kernel CSInstancedLODSortKernel1
+#pragma kernel CSInstancedLODSortKernel2
+
+uint _Count;
+uint _LodShift;
+StructuredBuffer<uint> _LodVisibility;
+AppendStructuredBuffer<uint> _VisibleIndicesLod0;
+AppendStructuredBuffer<uint> _VisibleIndicesLod1;
+AppendStructuredBuffer<uint> _VisibleIndicesLod2;
+
+[numthreads(64, 1, 1)]
+void CSInstancedLODSortKernel0(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _Count)
+        return;
+
+    uint lodNo = _LodVisibility[id.x];
+
+    if (lodNo == _LodShift)
+        _VisibleIndicesLod0.Append(id.x);
+}
+
+[numthreads(64, 1, 1)]
+void CSInstancedLODSortKernel1(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _Count)
+        return;
+
+    uint lodNo = _LodVisibility[id.x];
+
+    if (lodNo == _LodShift)
+        _VisibleIndicesLod0.Append(id.x);
+    else if (lodNo == _LodShift + 1)
+        _VisibleIndicesLod1.Append(id.x);
+}
+
+[numthreads(64, 1, 1)]
+void CSInstancedLODSortKernel2(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _Count)
+        return;
+
+    uint lodNo = _LodVisibility[id.x];
+
+    if (lodNo == _LodShift)
+        _VisibleIndicesLod0.Append(id.x);
+    else if (lodNo == _LodShift + 1)
+        _VisibleIndicesLod1.Append(id.x);
+    else if (lodNo == _LodShift + 2)
+        _VisibleIndicesLod2.Append(id.x);
+}

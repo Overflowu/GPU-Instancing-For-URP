@@ -1,0 +1,18 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+uint _SrcStart;
+uint _DestStart;
+uint _Count;
+
+StructuredBuffer<float4x4> _Src;
+RWStructuredBuffer<float4x4> _Dest;
+
+[numthreads(64,1,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _Count)
+        return;
+
+    _Dest[_DestStart + id.x] = _Src[_SrcStart + id.x];
+}

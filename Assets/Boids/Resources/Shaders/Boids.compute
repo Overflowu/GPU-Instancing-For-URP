@@ -1,0 +1,82 @@
+#pragma kernel CSMain
+
+RWStructuredBuffer<float4x4> _LocalToWorldBuffer;
+uniform uint _BufferOffset;
+uniform uint _BufferSize;
+
+uniform Texture2D<float4> _NoiseTexture;
+uniform SamplerState sampler_NoiseTexture;
+
+uniform float4x4 _ControllerTransform;
+uniform float _Velocity;
+uniform float _VelocityVariation;
+uniform float _RotationCoeff;
+uniform float _NeighborDist;
+uniform float _Time;
+uniform float _DeltaTime;
+
+#include "Includes/DataModel.hlsl"
+#include "Includes/Matrix.hlsl"
+
+float3 GetSeparationVector(float3 pos, float3 targetPos)
+{
+    float3 diff = pos - targetPos;
+    float diffLen = length(diff);
+    float scaler = clamp(1.0f - diffLen / _NeighborDist, 0, 1);
+    return diff * (scaler / diffLen);
+}
+
+[numthreads(64, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _BufferSize)
+        return;
+
+    float4x4 boid = _LocalToWorldBuffer[_BufferOffset + id.x];
+
+    float3 currentPosition = boid._14_24_34;
+    float3 currentDirection = boid._13_23_33;
+    
+    // Current velocity randomized with noise.
+    float4 noiseTxt = _NoiseTexture.SampleLevel(sampler_NoiseTexture, float2(_Time / 100.0, (float(id.x) / float(_BufferSize))), 0);
+    float velocity = _Velocity * (1.0 + lerp(0, lerp(-1, 1, noiseTxt.r), _VelocityVariation));
+
+    // Initializes the vectors.
+    float3 separation = float3(0, 0, 0);
+    float3 alignment = float3(0, 0, 0);
+    float3 cohesion = _ControllerTransform._14_24_34;
+    uint nearbyCount = 1;
+
+    // Accumulates the vectors.
+    for (uint i = 0; i < _BufferSize; i++)
+    {
+        if (i == id.x)
+            continue;
+        float4x4 checkBoid = _LocalToWorldBuffer[_BufferOffset + i];
+        float3 checkPos = checkBoid._14_24_34;
+        if (distance(currentPosition, checkPos) <= _NeighborDist)
+        {
+            separation += GetSeparationVector(currentPosition, checkPos);
+            alignment += checkBoid._13_23_33;
+            cohesion += checkPos;
+            nearbyCount++;
+        }
+    }
+
+    float avg = 1.0f / nearbyCount;
+    alignment *= avg;
+    cohesion *= avg;
+    cohesion = normalize(cohesion - currentPosition);
+
+    // Calculates a rotation from the vectors.
+    float3 direction = normalize(separation + alignment + cohesion);
+
+    // Applys the rotation with interpolation.
+    float ip = frac(exp(-_RotationCoeff * _DeltaTime) * _RotationCoeff / 100);
+    float4x4 newRotation = SetMatrixRotationWithQuaternion(identityMatrix, FromToRotation(float3(0, 0, 1), lerp(currentDirection, direction, ip)));
+
+    // Moves forward.
+    currentPosition = currentPosition + newRotation._13_23_33 * (velocity * _DeltaTime);
+
+    _LocalToWorldBuffer[_BufferOffset + id.x] = TRS(currentPosition, newRotation, vector3One);
+}
